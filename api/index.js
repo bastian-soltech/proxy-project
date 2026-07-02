@@ -12,6 +12,7 @@ export default async function handler(request) {
                 'Access-Control-Allow-Methods': 'GET, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Range',
                 'Access-Control-Max-Age': '86400',
+                'Connection': 'keep-alive'
             },
         });
     }

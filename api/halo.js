@@ -1,6 +1,3 @@
-// api/proxy-video.js
-
-// 1. WAJIB set runtime ke edge agar terhindar dari limit timeout 10 detik!
 export const config = {
     runtime: 'edge', 
 };

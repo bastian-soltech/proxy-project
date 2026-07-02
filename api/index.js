@@ -1,18 +1,17 @@
 export const config = {
-    runtime: 'edge', // Menggunakan Vercel Edge agar tidak ada limit 10 detik
+    runtime: 'edge',
 };
 
 export default async function handler(request) {
-    // 1. Handle CORS Pre-flight request dari frontend React
     if (request.method === 'OPTIONS') {
         return new Response(null, {
             status: 204,
             headers: {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'GET, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Range',
+                'Access-Control-Allow-Headers': 'Content-Type, Range, Authorization',
                 'Access-Control-Max-Age': '86400',
-                'Connection': 'keep-alive'
+             
             },
         });
     }
@@ -21,38 +20,51 @@ export default async function handler(request) {
         const { searchParams } = new URL(request.url);
         const videoUrl = searchParams.get('url');
 
-        // Jika user iseng buka domain utama tanpa parameter url
         if (!videoUrl) {
-            return new Response('NontonYuk21 Edge Streaming Proxy is Running.', { status: 200 });
+            return new Response('Proxy Active', { status: 200 });
         }
 
-        // 2. Ambil header Range untuk fitur skip / seeking video di player React
+        // Ambil range header dari player frontend (PENTING untuk kelancaran seeking/skip video)
         const rangeHeader = request.headers.get('range');
+        
         const headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'Referer': 'https://www.4khotvideo.com/',
+            'Connection': 'keep-alive', // Menjaga koneksi pipa antar-server tetap terbuka
         };
 
         if (rangeHeader) {
             headers['Range'] = rangeHeader;
         }
 
-        // 3. Tembak dan alirkan data langsung dari Terabox
-        const response = await fetch(videoUrl, { headers });
-        const videoStream = response.body;
+        // Tembak langsung ke server asal video
+        const response = await fetch(videoUrl, { 
+            headers,
+            // Beritahu Vercel untuk langsung mengalirkan data tanpa melakukan enkripsi/pembacaan ulang
+            redirect: 'follow' 
+        });
 
-        // 4. Kembalikan respons berupa Stream (Chunks biner)
-        return new Response(videoStream, {
+        // Buat objek header baru untuk dikirim balik ke React Player
+        const responseHeaders = new Headers({
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Range',
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'public, max-age=1200, stale-while-revalidate=600', // Caching pendek untuk potongan video yang sama
+            'Content-Type': response.headers.get('content-type') || 'video/mp4',
+        });
+
+        // Salir header penting jika server asal menyediakannya
+        if (response.headers.get('content-range')) {
+            responseHeaders.set('Content-Range', response.headers.get('content-range'));
+        }
+        if (response.headers.get('content-length')) {
+            responseHeaders.set('Content-Length', response.headers.get('content-length'));
+        }
+
+        return new Response(response.body, {
             status: response.status,
-            headers: {
-                'Content-Type': response.headers.get('content-type') || 'video/mp4',
-                'Content-Range': response.headers.get('content-range') || '',
-                'Accept-Ranges': 'bytes',
-                'Content-Length': response.headers.get('content-length') || '',
-                'Access-Control-Allow-Origin': '*', // CORS open untuk React frontend
-                'Access-Control-Allow-Methods': 'GET, OPTIONS',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-            },
+            headers: responseHeaders,
         });
 
     } catch (error) {
